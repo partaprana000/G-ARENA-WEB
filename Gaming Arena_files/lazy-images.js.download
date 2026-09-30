@@ -1,0 +1,356 @@
+// Lazy Loading & WebP Image Optimization System
+class LazyImageLoader {
+    constructor() {
+        this.observer = null;
+        this.webpSupported = null;
+        this.loadedImages = new Set();
+        this.imageQueue = [];
+        this.isProcessing = false;
+        this.init();
+    }
+
+    async init() {
+        // Check WebP support
+        await this.checkWebPSupport();
+        
+        // Initialize Intersection Observer
+        this.initIntersectionObserver();
+        
+        // Process existing images
+        this.processExistingImages();
+        
+        // Monitor for new images
+        this.monitorNewImages();
+        
+        console.log('🖼️ Lazy Image Loader initialized');
+        console.log('📊 WebP supported:', this.webpSupported);
+    }
+
+    // Check if browser supports WebP
+    async checkWebPSupport() {
+        return new Promise((resolve) => {
+            const webp = new Image();
+            webp.onload = webp.onerror = () => {
+                this.webpSupported = (webp.height === 2);
+                resolve(this.webpSupported);
+            };
+            webp.src = 'data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAACyAgCdASoCAAIALmk0mk0iIiIiIgBoSygABc6WWgAA/veff/0PP8bA//LwYAAA';
+        });
+    }
+
+    // Initialize Intersection Observer for lazy loading
+    initIntersectionObserver() {
+        const options = {
+            root: null,
+            rootMargin: '50px 0px', // Start loading 50px before image comes into view
+            threshold: 0.01
+        };
+
+        this.observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    this.loadImage(entry.target);
+                    this.observer.unobserve(entry.target);
+                }
+            });
+        }, options);
+    }
+
+    // Process all existing images on the page
+    processExistingImages() {
+        const images = document.querySelectorAll('img');
+        images.forEach(img => this.processImage(img));
+        
+        console.log(`📸 Found ${images.length} images to process`);
+    }
+
+    // Monitor for new images added to DOM
+    monitorNewImages() {
+        const mutationObserver = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) { // Element node
+                        // Check if the node itself is an image
+                        if (node.tagName === 'IMG') {
+                            this.processImage(node);
+                        }
+                        // Check for images within the added node
+                        const images = node.querySelectorAll ? node.querySelectorAll('img') : [];
+                        images.forEach(img => this.processImage(img));
+                    }
+                });
+            });
+        });
+
+        mutationObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    // Process individual image
+    processImage(img) {
+        if (this.loadedImages.has(img)) return;
+        
+        // Skip if already has lazy loading attributes
+        if (img.hasAttribute('data-lazy-processed')) return;
+        
+        // Mark as processed
+        img.setAttribute('data-lazy-processed', 'true');
+        this.loadedImages.add(img);
+
+        // Store original src
+        const originalSrc = img.src || img.getAttribute('data-src');
+        if (!originalSrc) return;
+
+        // Create placeholder
+        this.createPlaceholder(img);
+        
+        // Set up lazy loading
+        img.setAttribute('data-original-src', originalSrc);
+        img.removeAttribute('src'); // Remove src to prevent immediate loading
+        
+        // Add to observer
+        this.observer.observe(img);
+        
+        console.log('🔄 Processing image:', originalSrc);
+    }
+
+    // Create placeholder for image
+    createPlaceholder(img) {
+        // Create a low-quality placeholder
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 10;
+        canvas.height = 10;
+        
+        // Create gradient placeholder
+        const gradient = ctx.createLinearGradient(0, 0, 10, 10);
+        gradient.addColorStop(0, 'rgba(0, 255, 136, 0.1)');
+        gradient.addColorStop(1, 'rgba(0, 240, 255, 0.1)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 10, 10);
+        
+        // Set placeholder as src
+        img.src = canvas.toDataURL();
+        img.style.filter = 'blur(5px)';
+        img.style.transition = 'filter 0.3s ease';
+    }
+
+    // Load image with WebP optimization
+    async loadImage(img) {
+        const originalSrc = img.getAttribute('data-original-src');
+        if (!originalSrc) return;
+
+        try {
+            // Show loading state
+            img.classList.add('lazy-loading');
+            
+            // Get optimized image URL
+            const optimizedSrc = await this.getOptimizedImageUrl(originalSrc);
+            
+            // Preload the image
+            const imageLoader = new Image();
+            
+            imageLoader.onload = () => {
+                // Image loaded successfully
+                img.src = optimizedSrc;
+                img.style.filter = 'none';
+                img.classList.remove('lazy-loading');
+                img.classList.add('lazy-loaded');
+                
+                // Trigger fade-in animation
+                this.animateImageLoad(img);
+                
+                console.log('✅ Image loaded:', optimizedSrc);
+            };
+            
+            imageLoader.onerror = () => {
+                // Fallback to original image
+                console.warn('⚠️ Optimized image failed, using original:', originalSrc);
+                img.src = originalSrc;
+                img.style.filter = 'none';
+                img.classList.remove('lazy-loading');
+                img.classList.add('lazy-loaded');
+            };
+            
+            imageLoader.src = optimizedSrc;
+            
+        } catch (error) {
+            console.error('❌ Error loading image:', error);
+            // Fallback to original
+            img.src = originalSrc;
+            img.style.filter = 'none';
+            img.classList.remove('lazy-loading');
+        }
+    }
+
+    // Get optimized image URL (WebP conversion)
+    async getOptimizedImageUrl(originalSrc) {
+        // If WebP is not supported, return original
+        if (!this.webpSupported) {
+            return originalSrc;
+        }
+
+        // Check if it's already a WebP image
+        if (originalSrc.toLowerCase().includes('.webp')) {
+            return originalSrc;
+        }
+
+        // For external images or CDN integration
+        if (this.isExternalImage(originalSrc)) {
+            return this.getExternalWebPUrl(originalSrc);
+        }
+
+        // For local images, try to find WebP version
+        return this.getLocalWebPUrl(originalSrc);
+    }
+
+    // Check if image is external
+    isExternalImage(src) {
+        return src.startsWith('http') && !src.includes(window.location.hostname);
+    }
+
+    // Get external WebP URL (using CDN services)
+    getExternalWebPUrl(originalSrc) {
+        // Option 1: Use Cloudinary (if available)
+        if (window.cloudinaryConfig) {
+            return `https://res.cloudinary.com/${window.cloudinaryConfig.cloudName}/image/fetch/f_webp,q_auto/${encodeURIComponent(originalSrc)}`;
+        }
+        
+        // Option 2: Use ImageKit (if available)
+        if (window.imagekitConfig) {
+            return `${window.imagekitConfig.urlEndpoint}/tr:f-webp,q-auto/${encodeURIComponent(originalSrc)}`;
+        }
+        
+        // Option 3: Use your own conversion service
+        if (window.imageOptimizationEndpoint) {
+            return `${window.imageOptimizationEndpoint}?url=${encodeURIComponent(originalSrc)}&format=webp&quality=80`;
+        }
+        
+        // Fallback: return original
+        return originalSrc;
+    }
+
+    // Get local WebP URL
+    getLocalWebPUrl(originalSrc) {
+        // Try to replace extension with .webp
+        const webpSrc = originalSrc.replace(/\.(jpg|jpeg|png)$/i, '.webp');
+        
+        // Check if WebP version exists
+        return this.checkImageExists(webpSrc).then(exists => {
+            return exists ? webpSrc : originalSrc;
+        }).catch(() => originalSrc);
+    }
+
+    // Check if image exists
+    checkImageExists(src) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+            img.src = src;
+        });
+    }
+
+    // Animate image load
+    animateImageLoad(img) {
+        img.style.opacity = '0';
+        img.style.transform = 'scale(1.05)';
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            img.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            img.style.opacity = '1';
+            img.style.transform = 'scale(1)';
+        });
+    }
+
+    // Preload critical images
+    preloadCriticalImages() {
+        const criticalImages = document.querySelectorAll('img[data-critical="true"]');
+        criticalImages.forEach(img => {
+            this.loadImage(img);
+        });
+    }
+
+    // Convert existing images to WebP (for development)
+    async convertImagesToWebP() {
+        if (!window.imageConversionAPI) {
+            console.warn('⚠️ Image conversion API not configured');
+            return;
+        }
+
+        const images = document.querySelectorAll('img[data-convert="true"]');
+        
+        for (const img of images) {
+            try {
+                const originalSrc = img.src;
+                const response = await fetch(window.imageConversionAPI, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        imageUrl: originalSrc,
+                        format: 'webp',
+                        quality: 80
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.webpUrl) {
+                    img.src = result.webpUrl;
+                    console.log('🔄 Converted to WebP:', result.webpUrl);
+                }
+            } catch (error) {
+                console.error('❌ Conversion failed:', error);
+            }
+        }
+    }
+
+    // Performance monitoring
+    getPerformanceStats() {
+        const stats = {
+            totalImages: this.loadedImages.size,
+            webpSupported: this.webpSupported,
+            loadedImages: document.querySelectorAll('img.lazy-loaded').length,
+            loadingImages: document.querySelectorAll('img.lazy-loading').length
+        };
+        
+        console.table(stats);
+        return stats;
+    }
+
+    // Cleanup
+    destroy() {
+        if (this.observer) {
+            this.observer.disconnect();
+        }
+        this.loadedImages.clear();
+        console.log('🧹 Lazy Image Loader destroyed');
+    }
+}
+
+// Auto-initialize lazy loading
+const lazyImageLoader = new LazyImageLoader();
+
+// Make globally accessible
+window.lazyImageLoader = lazyImageLoader;
+
+// Preload critical images after page load
+window.addEventListener('load', () => {
+    lazyImageLoader.preloadCriticalImages();
+});
+
+// Performance monitoring (optional)
+if (window.location.search.includes('debug=images')) {
+    setInterval(() => {
+        lazyImageLoader.getPerformanceStats();
+    }, 5000);
+}
+
+// Export for use in other scripts
+window.LazyImageLoader = LazyImageLoader;

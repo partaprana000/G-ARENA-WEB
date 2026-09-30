@@ -1,0 +1,507 @@
+// Dynamic Forms Handler for Gaming Arena
+class DynamicFormHandler {
+    constructor() {
+        this.forms = new Map();
+        this.validationRules = new Map();
+        this.init();
+    }
+
+    init() {
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.setupForms());
+        } else {
+            this.setupForms();
+        }
+    }
+
+    setupForms() {
+        // Setup all forms on the page
+        this.setupContactForm();
+        this.setupBookingForm();
+        this.setupNewsletterForm();
+        this.setupSearchForm();
+        
+        // Setup form validation
+        this.setupValidation();
+        
+        // Setup dynamic field generation
+        this.setupDynamicFields();
+    }
+
+    // Contact Form Setup
+    setupContactForm() {
+        const contactForm = this.findForm('contact');
+        if (contactForm) {
+            this.forms.set('contact', {
+                element: contactForm,
+                fields: ['name', 'email', 'phone', 'message'],
+                required: ['name', 'email', 'message'],
+                submitHandler: this.handleContactSubmit.bind(this)
+            });
+
+            contactForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleFormSubmit('contact', e);
+            });
+        }
+    }
+
+    // Booking Form Setup
+    setupBookingForm() {
+        const bookingForm = this.findForm('booking');
+        if (bookingForm) {
+            this.forms.set('booking', {
+                element: bookingForm,
+                fields: ['name', 'email', 'phone', 'date', 'time', 'players', 'game'],
+                required: ['name', 'email', 'phone', 'date', 'time'],
+                submitHandler: this.handleBookingSubmit.bind(this)
+            });
+
+            bookingForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleFormSubmit('booking', e);
+            });
+
+            // Add dynamic time slots
+            this.addTimeSlots(bookingForm);
+            
+            // Add dynamic player count
+            this.addPlayerCount(bookingForm);
+        }
+    }
+
+    // Newsletter Form Setup
+    setupNewsletterForm() {
+        const newsletterForm = this.findForm('newsletter');
+        if (newsletterForm) {
+            this.forms.set('newsletter', {
+                element: newsletterForm,
+                fields: ['email'],
+                required: ['email'],
+                submitHandler: this.handleNewsletterSubmit.bind(this)
+            });
+
+            newsletterForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleFormSubmit('newsletter', e);
+            });
+        }
+    }
+
+    // Search Form Setup
+    setupSearchForm() {
+        const searchForm = this.findForm('search') || document.querySelector('input[type="search"]');
+        if (searchForm) {
+            if (searchForm.tagName === 'INPUT') {
+                searchForm.addEventListener('input', (e) => {
+                    this.handleSearch(e.target.value);
+                });
+            } else {
+                searchForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const searchInput = searchForm.querySelector('input');
+                    if (searchInput) {
+                        this.handleSearch(searchInput.value);
+                    }
+                });
+            }
+        }
+    }
+
+    // Find form by ID, class, or data attribute
+    findForm(identifier) {
+        return document.getElementById(`${identifier}-form`) ||
+               document.querySelector(`.${identifier}-form`) ||
+               document.querySelector(`[data-form="${identifier}"]`) ||
+               document.querySelector(`form[name="${identifier}"]`);
+    }
+
+    // Setup form validation
+    setupValidation() {
+        // Email validation
+        this.validationRules.set('email', {
+            pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+            message: 'Please enter a valid email address'
+        });
+
+        // Phone validation
+        this.validationRules.set('phone', {
+            pattern: /^[\+]?[1-9][\d]{0,15}$/,
+            message: 'Please enter a valid phone number'
+        });
+
+        // Name validation
+        this.validationRules.set('name', {
+            pattern: /^[a-zA-Z\s]{2,50}$/,
+            message: 'Name should be 2-50 characters and contain only letters'
+        });
+    }
+
+    // Setup dynamic fields
+    setupDynamicFields() {
+        // Add dynamic fields based on form type
+        document.querySelectorAll('[data-dynamic-field]').forEach(field => {
+            const fieldType = field.getAttribute('data-dynamic-field');
+            this.createDynamicField(field, fieldType);
+        });
+    }
+
+    // Create dynamic field
+    createDynamicField(container, fieldType) {
+        switch (fieldType) {
+            case 'time-slots':
+                this.createTimeSlots(container);
+                break;
+            case 'player-count':
+                this.createPlayerCount(container);
+                break;
+            case 'game-selection':
+                this.createGameSelection(container);
+                break;
+            case 'date-picker':
+                this.createDatePicker(container);
+                break;
+        }
+    }
+
+    // Create time slots
+    createTimeSlots(container) {
+        const timeSlots = [
+            '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM',
+            '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM',
+            '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM'
+        ];
+
+        const slotsHTML = timeSlots.map(time => `
+            <label class="time-slot">
+                <input type="radio" name="time" value="${time}" required>
+                <span class="time-slot-text">${time}</span>
+            </label>
+        `).join('');
+
+        container.innerHTML = `
+            <div class="time-slots-grid">
+                ${slotsHTML}
+            </div>
+        `;
+    }
+
+    // Create player count selector
+    createPlayerCount(container) {
+        const playerOptions = Array.from({length: 10}, (_, i) => i + 1);
+        
+        const optionsHTML = playerOptions.map(count => `
+            <option value="${count}">${count} Player${count > 1 ? 's' : ''}</option>
+        `).join('');
+
+        container.innerHTML = `
+            <select name="players" class="form-input" required>
+                <option value="">Select Players</option>
+                ${optionsHTML}
+            </select>
+        `;
+    }
+
+    // Create game selection
+    createGameSelection(container) {
+        const games = [
+            'PUBG', 'Free Fire', 'Call of Duty', 'Valorant',
+            'FIFA', 'Tekken', 'Street Fighter', 'Mortal Kombat',
+            'GTA V', 'Fortnite', 'Apex Legends', 'Counter Strike'
+        ];
+
+        const gamesHTML = games.map(game => `
+            <label class="game-option">
+                <input type="checkbox" name="games[]" value="${game}">
+                <span class="game-name">${game}</span>
+            </label>
+        `).join('');
+
+        container.innerHTML = `
+            <div class="games-grid">
+                ${gamesHTML}
+            </div>
+        `;
+    }
+
+    // Create date picker
+    createDatePicker(container) {
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setDate(today.getDate() + 30);
+
+        container.innerHTML = `
+            <input type="date" 
+                   name="date" 
+                   class="form-input" 
+                   min="${today.toISOString().split('T')[0]}"
+                   max="${maxDate.toISOString().split('T')[0]}"
+                   required>
+        `;
+    }
+
+    // Add time slots to booking form
+    addTimeSlots(form) {
+        const timeContainer = form.querySelector('[data-time-slots]');
+        if (timeContainer) {
+            this.createTimeSlots(timeContainer);
+        }
+    }
+
+    // Add player count to booking form
+    addPlayerCount(form) {
+        const playerContainer = form.querySelector('[data-player-count]');
+        if (playerContainer) {
+            this.createPlayerCount(playerContainer);
+        }
+    }
+
+    // Handle form submission
+    handleFormSubmit(formType, event) {
+        const formConfig = this.forms.get(formType);
+        if (!formConfig) return;
+
+        const formData = this.getFormData(formConfig.element);
+        
+        // Validate form
+        if (!this.validateForm(formConfig, formData)) {
+            return;
+        }
+
+        // Show loading state
+        this.showLoadingState(formConfig.element);
+
+        // Call specific submit handler
+        formConfig.submitHandler(formData, formConfig.element);
+    }
+
+    // Get form data
+    getFormData(form) {
+        const formData = new FormData(form);
+        const data = {};
+        
+        for (let [key, value] of formData.entries()) {
+            if (data[key]) {
+                // Handle multiple values (like checkboxes)
+                if (Array.isArray(data[key])) {
+                    data[key].push(value);
+                } else {
+                    data[key] = [data[key], value];
+                }
+            } else {
+                data[key] = value;
+            }
+        }
+        
+        return data;
+    }
+
+    // Validate form
+    validateForm(formConfig, data) {
+        let isValid = true;
+        const errors = [];
+
+        // Check required fields
+        formConfig.required.forEach(field => {
+            if (!data[field] || data[field].trim() === '') {
+                errors.push(`${field} is required`);
+                isValid = false;
+            }
+        });
+
+        // Validate field patterns
+        Object.keys(data).forEach(field => {
+            const rule = this.validationRules.get(field);
+            if (rule && data[field] && !rule.pattern.test(data[field])) {
+                errors.push(rule.message);
+                isValid = false;
+            }
+        });
+
+        if (!isValid) {
+            this.showErrors(formConfig.element, errors);
+        }
+
+        return isValid;
+    }
+
+    // Show loading state
+    showLoadingState(form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading-spinner"></span> Sending...';
+        }
+    }
+
+    // Hide loading state
+    hideLoadingState(form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = submitBtn.getAttribute('data-original-text') || 'Submit';
+        }
+    }
+
+    // Show errors
+    showErrors(form, errors) {
+        // Remove existing errors
+        form.querySelectorAll('.error-message').forEach(el => el.remove());
+
+        // Add new errors
+        errors.forEach(error => {
+            const errorEl = document.createElement('div');
+            errorEl.className = 'error-message';
+            errorEl.textContent = error;
+            form.insertBefore(errorEl, form.firstChild);
+        });
+    }
+
+    // Show success message
+    showSuccess(form, message) {
+        // Remove existing messages
+        form.querySelectorAll('.success-message, .error-message').forEach(el => el.remove());
+
+        const successEl = document.createElement('div');
+        successEl.className = 'success-message';
+        successEl.textContent = message;
+        form.insertBefore(successEl, form.firstChild);
+
+        // Reset form
+        form.reset();
+    }
+
+    // Contact form submit handler
+    async handleContactSubmit(data, form) {
+        try {
+            // Simulate API call
+            await this.simulateAPICall();
+            
+            this.hideLoadingState(form);
+            this.showSuccess(form, 'Thank you! Your message has been sent successfully.');
+            
+            // Optional: Send to actual API
+            // await this.sendToAPI('/api/contact', data);
+        } catch (error) {
+            this.hideLoadingState(form);
+            this.showErrors(form, ['Failed to send message. Please try again.']);
+        }
+    }
+
+    // Booking form submit handler
+    async handleBookingSubmit(data, form) {
+        try {
+            // Simulate API call
+            await this.simulateAPICall();
+            
+            this.hideLoadingState(form);
+            this.showSuccess(form, 'Booking request submitted! We will confirm your slot shortly.');
+            
+            // Optional: Send to actual API
+            // await this.sendToAPI('/api/booking', data);
+        } catch (error) {
+            this.hideLoadingState(form);
+            this.showErrors(form, ['Failed to submit booking. Please try again.']);
+        }
+    }
+
+    // Newsletter form submit handler
+    async handleNewsletterSubmit(data, form) {
+        try {
+            // Simulate API call
+            await this.simulateAPICall();
+            
+            this.hideLoadingState(form);
+            this.showSuccess(form, 'Successfully subscribed to newsletter!');
+            
+            // Optional: Send to actual API
+            // await this.sendToAPI('/api/newsletter', data);
+        } catch (error) {
+            this.hideLoadingState(form);
+            this.showErrors(form, ['Failed to subscribe. Please try again.']);
+        }
+    }
+
+    // Handle search
+    handleSearch(query) {
+        if (query.length < 2) {
+            this.clearSearchResults();
+            return;
+        }
+
+        // Get searchable elements
+        const searchableElements = document.querySelectorAll('[data-searchable]');
+        const results = [];
+
+        searchableElements.forEach(element => {
+            const searchText = element.getAttribute('data-search-text') || element.textContent;
+            if (searchText.toLowerCase().includes(query.toLowerCase())) {
+                results.push(element);
+                element.style.display = '';
+            } else {
+                element.style.display = 'none';
+            }
+        });
+
+        // Show search results count
+        this.showSearchResults(results.length, query);
+    }
+
+    // Clear search results
+    clearSearchResults() {
+        document.querySelectorAll('[data-searchable]').forEach(element => {
+            element.style.display = '';
+        });
+        
+        const resultsEl = document.querySelector('.search-results');
+        if (resultsEl) {
+            resultsEl.remove();
+        }
+    }
+
+    // Show search results
+    showSearchResults(count, query) {
+        let resultsEl = document.querySelector('.search-results');
+        if (!resultsEl) {
+            resultsEl = document.createElement('div');
+            resultsEl.className = 'search-results';
+            const searchContainer = document.querySelector('.search-container') || document.body;
+            searchContainer.appendChild(resultsEl);
+        }
+
+        resultsEl.innerHTML = `
+            <p>Found ${count} result${count !== 1 ? 's' : ''} for "${query}"</p>
+        `;
+    }
+
+    // Simulate API call
+    simulateAPICall() {
+        return new Promise((resolve) => {
+            setTimeout(resolve, 1500);
+        });
+    }
+
+    // Send to actual API
+    async sendToAPI(endpoint, data) {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            throw new Error('API request failed');
+        }
+
+        return response.json();
+    }
+}
+
+// Initialize dynamic forms when DOM is ready
+const dynamicForms = new DynamicFormHandler();
+
+// Export for use in other scripts
+window.DynamicFormHandler = DynamicFormHandler;
